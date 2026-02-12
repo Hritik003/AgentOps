@@ -10,34 +10,6 @@
 
 ## Workshop Flow
 
-```
-                                    START HERE
-                                        |
-                                        v
-    +-----------------------------------------------------------------------+
-    |                                                                       |
-    |   MODULE 1                MODULE 2                MODULE 3            |
-    |   Talk to the             Extending the           The Full Stack      |
-    |   Machine                 Brain                   Agent               |
-    |                                                                       |
-    |   [ Inference +    --->   [ Build & Deploy  --->  [ Inference +       |
-    |     Chat App ]              MCP Server ]            MCP + Chat ]      |
-    |                                                                       |
-    +-----------------------------------------------------------------------+
-                                        |
-                                        v
-                              +-----------------+
-                              |    MODULE 4     |
-                              |  Code Whisperer |
-                              |                 |
-                              | [ Code Review   |
-                              |     Agent ]     |
-                              +-----------------+
-                                        |
-                                        v
-                                   COMPLETE!
-```
-
 ```mermaid
 flowchart LR
     subgraph journey [Your Learning Journey]
