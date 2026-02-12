@@ -10,17 +10,48 @@
 
 ## Workshop Flow
 
+```
+                                    START HERE
+                                        |
+                                        v
+    +-----------------------------------------------------------------------+
+    |                                                                       |
+    |   MODULE 1                MODULE 2                MODULE 3            |
+    |   Talk to the             Extending the           The Full Stack      |
+    |   Machine                 Brain                   Agent               |
+    |                                                                       |
+    |   [ Inference +    --->   [ Build & Deploy  --->  [ Inference +       |
+    |     Chat App ]              MCP Server ]            MCP + Chat ]      |
+    |                                                                       |
+    +-----------------------------------------------------------------------+
+                                        |
+                                        v
+                              +-----------------+
+                              |    MODULE 4     |
+                              |  Code Whisperer |
+                              |                 |
+                              | [ Code Review   |
+                              |     Agent ]     |
+                              +-----------------+
+                                        |
+                                        v
+                                   COMPLETE!
+```
+
 ```mermaid
-gitGraph
-    commit id: "main" tag: "Landing Page"
-    branch module-1
-    commit id: "Talk to the Machine"
-    branch module-2
-    commit id: "Extending the Brain"
-    branch module-3
-    commit id: "The Full Stack Agent"
-    branch module-4
-    commit id: "Code Whisperer"
+flowchart LR
+    subgraph journey [Your Learning Journey]
+        direction LR
+        M1[Module 1<br/>Talk to the Machine]
+        M2[Module 2<br/>Extending the Brain]
+        M3[Module 3<br/>The Full Stack Agent]
+        M4[Module 4<br/>Code Whisperer]
+        
+        M1 --> M2 --> M3 --> M4
+    end
+    
+    Start((Start)) --> M1
+    M4 --> Finish((Done!))
 ```
 
 ---
