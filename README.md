@@ -8,6 +8,23 @@
 
 ---
 
+## Workshop Flow
+
+```mermaid
+gitGraph
+    commit id: "main" tag: "Landing Page"
+    branch module-1
+    commit id: "Talk to the Machine"
+    branch module-2
+    commit id: "Extending the Brain"
+    branch module-3
+    commit id: "The Full Stack Agent"
+    branch module-4
+    commit id: "Code Whisperer"
+```
+
+---
+
 ## Getting Started
 
 ```bash
