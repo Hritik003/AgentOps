@@ -23,19 +23,60 @@ MCP_BEARER_TOKEN = os.environ.get("MCP_PROXY_BEARER_TOKEN", "").strip()  # Optio
 OPENAI_BASE = os.environ.get("OPENAI_API_BASE")  # Your OpenAI-compliant endpoint base URL
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "dummy")  # API key for the endpoint
 
-# Only these 2 tools are exposed to the model
-TOOL_NAMES = ["get_pull_request_files", "create_issue_comment"]
-
 # ---------------------------------------------------------------------------
 # MCP client (HTTP JSON-RPC)
 # ---------------------------------------------------------------------------
 
+# Session ID from server; capture from initialize (and any) response, send on all subsequent requests.
+MCP_SESSION_ID: list[str | None] = [None]
+
+
 def _mcp_headers() -> dict:
-    """Build headers for MCP proxy requests, including optional Bearer auth."""
-    headers = {"Content-Type": "application/json"}
+    """Build headers for MCP proxy requests: Accept for JSON/SSE, optional Bearer auth, session ID."""
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
     if MCP_BEARER_TOKEN:
         headers["Authorization"] = f"Bearer {MCP_BEARER_TOKEN}"
+    if MCP_SESSION_ID[0]:
+        headers["Mcp-Session-Id"] = MCP_SESSION_ID[0]
     return headers
+
+
+def _parse_mcp_response_body(text: str) -> dict:
+    """Parse MCP response: plain JSON or SSE (event: message, data: {...})."""
+    if not text or not text.strip():
+        return {}
+    text = text.strip()
+    if text.startswith("{"):
+        return json.loads(text)
+    if "data:" in text:
+        data_parts = []
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.startswith("data:"):
+                data_parts.append(line[5:].strip())
+        if data_parts:
+            json_str = "\n".join(data_parts)
+            if json_str:
+                return json.loads(json_str)
+    return json.loads(text)
+
+
+def _capture_session_id(resp: requests.Response) -> None:
+    """Extract MCP session ID from response headers or body and store for subsequent requests."""
+    sid = resp.headers.get("Mcp-Session-Id") or resp.headers.get("mcp-session-id")
+    if not sid and (resp.text or "").strip():
+        try:
+            data = _parse_mcp_response_body(resp.text)
+            result = data.get("result") if isinstance(data, dict) else data
+            if isinstance(result, dict):
+                sid = result.get("sessionId") or result.get("session_id")
+        except Exception:
+            pass
+    if sid:
+        MCP_SESSION_ID[0] = sid
 
 
 def mcp_request(method: str, params: dict | None = None) -> dict:
@@ -43,14 +84,18 @@ def mcp_request(method: str, params: dict | None = None) -> dict:
     payload = {"jsonrpc": "2.0", "id": 1, "method": method}
     if params is not None:
         payload["params"] = params
-    resp = requests.post(
-        f"{MCP_URL}/",
-        json=payload,
-        headers=_mcp_headers(),
-        timeout=30,
-    )
+    resp = requests.post(MCP_URL, json=payload, headers=_mcp_headers(), timeout=30)
+    _capture_session_id(resp)
     resp.raise_for_status()
-    data = resp.json()
+    if not (resp.text or "").strip():
+        data = {}
+    else:
+        try:
+            data = _parse_mcp_response_body(resp.text)
+        except json.JSONDecodeError:
+            raise RuntimeError(
+                f"MCP response is not JSON. Status: {resp.status_code}. Body: {(resp.text or '')[:300]!r}"
+            )
     if "error" in data:
         raise RuntimeError(data["error"].get("message", data["error"]))
     return data.get("result", {})
@@ -69,7 +114,7 @@ def mcp_list_tools() -> list[dict]:
     """Fetch all tools from MCP and return only the 2 we need."""
     result = mcp_request("tools/list")
     all_tools = result.get("tools", [])
-    return [t for t in all_tools if t.get("name") in TOOL_NAMES]
+    return all_tools
 
 
 def mcp_call_tool(name: str, arguments: dict) -> str:
@@ -107,13 +152,8 @@ def mcp_tools_to_openai(mcp_tools: list[dict]) -> list[dict]:
 # Agent loop
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a code review agent. You have access to two tools:
-
-1. get_pull_request_files(owner, repo, pull_number) - Get the list of files changed in a pull request with their diffs and change statistics. Use this first to see what code changed.
-
-2. create_issue_comment(owner, repo, issue_number, body) - Create a comment on the pull request. Use this to post your review. For a PR, issue_number is the same as the pull request number.
-
-Your task: Review the code for the given PR and then post a single, concise review comment summarizing your findings (what looks good, any suggestions or concerns). Use the tools in order: first get the PR files, then write the review comment. After posting the comment, reply with a short confirmation to the user."""
+SYSTEM_PROMPT = """You are a code review agent. You can get pull request files. If you have the pull request files, you can create a review comment on a pull request.
+Your task: Review the code for the given PR and then post a single, concise review comment summarizing your findings (what looks good, any suggestions or concerns). Use the tools available to you in order. First get the PR files, go through them, then write the review comment. After posting the comment, reply with a short confirmation to the user."""
 
 
 def run_agent(owner: str, repo: str, pull_number: int) -> str:
@@ -136,8 +176,7 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
     user_message = (
         f"Please review the code for this pull request and add a comment with your review.\n"
         f"Repository: {owner}/{repo}\n"
-        f"Pull request number: {pull_number}\n"
-        f"Use get_pull_request_files first, then create_issue_comment to post your review."
+        f"Pull request number: {pull_number}"
     )
 
     messages = [
