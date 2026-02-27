@@ -18,10 +18,11 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-MCP_URL = os.environ.get("MCP_PROXY_URL", "http://localhost:8080").rstrip("/")
+MCP_URL = os.environ.get("MCP_PROXY_URL", "http://localhost:8000/mcp").rstrip("/")
 MCP_BEARER_TOKEN = os.environ.get("MCP_PROXY_BEARER_TOKEN", "").strip()  # Optional Bearer auth for MCP proxy
 OPENAI_BASE = os.environ.get("OPENAI_API_BASE")  # Your OpenAI-compliant endpoint base URL
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "dummy")  # API key for the endpoint
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "oss-demo-1")
 
 # ---------------------------------------------------------------------------
 # MCP client (HTTP JSON-RPC)
@@ -84,7 +85,13 @@ def mcp_request(method: str, params: dict | None = None) -> dict:
     payload = {"jsonrpc": "2.0", "id": 1, "method": method}
     if params is not None:
         payload["params"] = params
-    resp = requests.post(MCP_URL, json=payload, headers=_mcp_headers(), timeout=30)
+    try:
+        resp = requests.post(MCP_URL, json=payload, headers=_mcp_headers(), timeout=60)
+    except (requests.exceptions.ConnectTimeout, requests.exceptions.Timeout) as e:
+        raise RuntimeError(
+            f"MCP connection to {MCP_URL} timed out. "
+            "Check network access, VPN, or firewall. If using a remote MCP, ensure the host is reachable."
+        ) from e
     _capture_session_id(resp)
     resp.raise_for_status()
     if not (resp.text or "").strip():
@@ -164,10 +171,13 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
     if not OPENAI_BASE:
         raise ValueError("Set OPENAI_API_BASE to your OpenAI-compliant inference endpoint URL")
 
-    client = OpenAI(
-        base_url=OPENAI_BASE,
-        api_key=OPENAI_KEY,
+    # If OPENAI_BASE is a full chat/completions URL, strip that path so the client can append it.
+    base_url = (
+        OPENAI_BASE.rsplit("/chat/completions", 1)[0]
+        if "/chat/completions" in OPENAI_BASE
+        else OPENAI_BASE.rstrip("/")
     )
+    client = OpenAI(base_url=base_url, api_key=OPENAI_KEY)
 
     mcp_initialize()
     mcp_tool_list = mcp_list_tools()
@@ -188,7 +198,7 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
 
     for _ in range(max_turns):
         response = client.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o"),
+            model=OPENAI_MODEL,
             messages=messages,
             tools=openai_tools,
             tool_choice="auto",
