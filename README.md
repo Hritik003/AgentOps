@@ -83,6 +83,7 @@ Before starting, ensure you have:
 
 - [ ] Python 3.10+ installed
 - [ ] Basic understanding of Python
+- [ ] Github Finegrained token ( given only access to your forked repo )
 - [ ] API keys (will be provided during workshop)
 - [ ] Code editor (VS Code recommended)
 
