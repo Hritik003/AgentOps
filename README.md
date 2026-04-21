@@ -1,6 +1,5 @@
-# Fifth Elephant Workshop
+# MCP Workshop
 
-![Workshop](https://img.shields.io/badge/Workshop-Fifth%20Elephant%202026-blue)
 ![Modules](https://img.shields.io/badge/Modules-4-green)
 ![AI](https://img.shields.io/badge/AI-Agents%20%26%20LLMs-purple)
 
@@ -33,7 +32,6 @@ flowchart LR
 ```bash
 # Clone this repo
 git clone <repo-url>
-cd fifth_elephant_workshop
 
 # Start with Module 1
 git checkout module-1
