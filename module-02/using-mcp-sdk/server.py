@@ -15,6 +15,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -25,7 +26,14 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8000"))
 
-mcp = FastMCP("github-tools")
+mcp = FastMCP(
+    "github-tools",
+    host=HOST,
+    port=PORT,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
+)
 
 
 def _headers() -> dict:
