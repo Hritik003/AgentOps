@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY server_http.py .
+COPY server.py .
 
 # Create non-root user for security
 RUN useradd -m -u 1000 mcpuser && chown -R mcpuser:mcpuser /app
@@ -21,6 +21,7 @@ USER mcpuser
 # Environment variables
 ENV MCP_HOST=0.0.0.0
 ENV MCP_PORT=8000
+ENV GITHUB_TOKEN=""
 ENV PYTHONUNBUFFERED=1
 
 # Expose port
@@ -31,4 +32,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the server
-CMD ["python", "server_http.py"]
+CMD ["python", "server.py"]

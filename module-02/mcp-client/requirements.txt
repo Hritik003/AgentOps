@@ -1,2 +1,0 @@
-# MCP client (Streamable HTTP) - works with mcp-proxy and using-mcp-sdk server_http
-mcp>=1.0.0
