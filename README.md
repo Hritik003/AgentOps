@@ -48,7 +48,7 @@ git checkout module-1
 | 01 | [`module-1`](../../tree/module-1) | **Talk to the Machine** | Your first LLM-powered chat application |
 | 02 | [`module-2`](../../tree/module-2) | **Extending the Brain** | Build and deploy your own MCP Server |
 | 03 | [`module-3`](../../tree/module-3) | **The Full Stack Agent** | Inference + MCP integrated chat app |
-| 04 | [`module-4`](../../tree/module-4) | **Code Whisperer** | An autonomous code review agent |
+| 04 | [`module-4`](../../tree/module-4) | **Code Whisperer** | A generic AI agent with MCP tools (GitHub, Jira, etc.) |
 
 ---
 

@@ -133,8 +133,8 @@ result = await session.call_tool(tool_name, tool_arguments)
 
 Once you've completed this module, move on to:
 
-**Module 4: Code Whisperer** - Build an autonomous code review agent
+**Module 4: Code Whisperer** - Build a generic AI agent with MCP tools
 
 ```bash
-cd ../module-04
+cd ../module-4/code-review-agent
 ```

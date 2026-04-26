@@ -1,30 +1,35 @@
-# Code Review Agent (Demo)
+# Module 4: Code Agent
 
-Minimal **agentic** app that reviews a pull request and posts a comment using:
+A generic **agentic** assistant that can use any MCP tools (GitHub, Jira, etc.) to accomplish tasks described in natural language.
 
-- **2 MCP tools** from [code-review-mcp-server](../code-review-mcp-server):  
-  `get_pull_request_files`, `create_issue_comment`
+- **MCP tools** — GitHub (PRs, branches, file ops), Jira (issues, search), and more
 - An **OpenAI-compliant** inference endpoint for the LLM
-
-Flow: **Get PR files** → **LLM generates review** → **Post comment on PR**.
+- **Interactive chat** — the agent loops until the task is done, calling as many tools as needed
 
 ## Prerequisites
 
-1. **Code review backend and MCP proxy** must be running:
-   - [code-review-server](../code-review-server): Flask app that talks to GitHub (default `http://localhost:5000`)
-   - [code-review-mcp-server/mcp-proxy](../code-review-mcp-server/mcp-proxy): MCP over HTTP (default `http://localhost:8080`)
-2. **GitHub token** for posting comments: set `GITHUB_TOKEN` where the code-review-server runs.
-3. **OpenAI-compliant endpoint**: any API that supports Chat Completions with tool/function calling (e.g. OpenAI, Azure OpenAI, or a custom inference endpoint).
+- Python 3.10+
+- Completed Modules 1–3
+- API credentials (provided during workshop)
 
 ## Environment variables
 
+Create a `.env` file with your credentials:
+
+```env
+OPENAI_BASE_URL=<your-api-endpoint>
+OPENAI_API_KEY=<your-api-key>
+MCP_SERVER_URL=<your-mcp-server-url>
+MCP_AUTH_TOKEN=<your-mcp-auth-token>
+```
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_BASE` | Yes | Base URL of your OpenAI-compliant API (e.g. `https://api.openai.com/v1` or your inference endpoint). |
-| `OPENAI_API_KEY` | Yes | API key for that endpoint. |
-| `OPENAI_MODEL` | No | Model name (default: `gpt-4o`). |
-| `MCP_PROXY_URL` | No | MCP proxy base URL (default: `http://localhost:8080`). |
-| `MCP_PROXY_BEARER_TOKEN` | No | Bearer token for MCP proxy auth; if set, sent as `Authorization: Bearer <token>`. |
+| `OPENAI_BASE_URL` | Yes | Base URL of your OpenAI-compliant API. |
+| `OPENAI_API_KEY` | Yes | API key for the inference endpoint. |
+| `MCP_SERVER_URL` | Yes | MCP server URL. |
+| `MCP_AUTH_TOKEN` | Yes | Bearer token for MCP auth. |
+| `OPENAI_MODEL` | No | Model name (default: `gptoss120b--ep-klmd`). |
 
 ## Setup
 
@@ -35,38 +40,31 @@ pip install -r requirements.txt
 
 ## Run
 
-```bash
-export OPENAI_API_BASE="https://your-inference-endpoint/v1"
-export OPENAI_API_KEY="your-api-key"
-
-python agent.py <owner> <repo> <pull_number>
-```
-
-Example:
+### Interactive mode (default)
 
 ```bash
-python agent.py octocat hello-world 123
+python agent.py
 ```
 
-The agent will:
+This starts an interactive chat — type any task and the agent will break it down, call tools, and complete it. Type `exit` to quit.
 
-1. Call **get_pull_request_files** (via MCP) to fetch the PR diff.
-2. Send the diff to your inference endpoint to generate a review.
-3. Call **create_issue_comment** (via MCP) to post the review as a PR comment.
+### Single query mode
+
+```bash
+python agent.py "Analyze Jira issue NAI-4199 and raise a PR to fix it in Hritik003/test-repo"
+```
+
+### From the notebook
+
+Open `code-review-agent.ipynb`, run all cells, and type your query in the input prompt.
 
 ## Project structure
 
 ```
 code-review-agent/
-├── agent.py               # MCP client + agent loop + CLI
-├── code_review_agent.ipynb # Same flow in a Jupyter notebook
+├── agent.py                   # MCP client + generic agent loop + interactive CLI
+├── code-review-agent.ipynb    # Same flow in a Jupyter notebook
 ├── requirements.txt
+├── .env                       # Your credentials (not committed)
 └── README.md
 ```
-
-To run from a notebook: open `code_review_agent.ipynb`, set config (cell 1) and `owner` / `repo` / `pull_number` (cell 5), then run all cells.
-
-## MCP tools used
-
-- **get_pull_request_files** – Get changed files and patches for the PR (read).
-- **create_issue_comment** – Create a comment on the PR (write; requires `GITHUB_TOKEN` on the code-review-server).

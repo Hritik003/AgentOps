@@ -1,9 +1,8 @@
 """
-Minimal Code Review Agent
+Generic AI Agent
 
-Uses 2 MCP tools from code-review-mcp-server:
-  1. get_pull_request_files - fetch PR diff for review
-  2. create_issue_comment   - post review as a PR comment
+Interactive CLI agent that can use any MCP tools (GitHub, Jira, etc.)
+to accomplish tasks described in natural language.
 
 Runs an agentic loop with an OpenAI-compliant inference endpoint.
 """
@@ -13,16 +12,19 @@ import os
 import sys
 
 import requests
+from dotenv import load_dotenv
 from openai import OpenAI
 
+load_dotenv()
+
 # ---------------------------------------------------------------------------
-# Config
+# Config — loaded from .env
 # ---------------------------------------------------------------------------
-MCP_URL = os.environ.get("MCP_PROXY_URL", "http://localhost:8000/mcp").rstrip("/")
-MCP_BEARER_TOKEN = os.environ.get("MCP_PROXY_BEARER_TOKEN", "").strip()  # Optional Bearer auth for MCP proxy
-OPENAI_BASE = os.environ.get("OPENAI_API_BASE")  # Your OpenAI-compliant endpoint base URL
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "dummy")  # API key for the endpoint
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "oss-demo-1")
+MCP_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp").rstrip("/")
+MCP_BEARER_TOKEN = os.getenv("MCP_AUTH_TOKEN", "").strip()
+OPENAI_BASE = os.getenv("OPENAI_BASE_URL")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY", "dummy")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gptoss120b--ep-klmd")
 
 # ---------------------------------------------------------------------------
 # MCP client (HTTP JSON-RPC)
@@ -118,10 +120,9 @@ def mcp_initialize():
 
 
 def mcp_list_tools() -> list[dict]:
-    """Fetch all tools from MCP and return only the 2 we need."""
+    """Fetch all available tools from MCP."""
     result = mcp_request("tools/list")
-    all_tools = result.get("tools", [])
-    return all_tools
+    return result.get("tools", [])
 
 
 def mcp_call_tool(name: str, arguments: dict) -> str:
@@ -159,44 +160,15 @@ def mcp_tools_to_openai(mcp_tools: list[dict]) -> list[dict]:
 # Agent loop
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a code review agent. You can get pull request files. If you have the pull request files, you can create a review comment on a pull request.
-Your task: Review the code for the given PR and then post a single, concise review comment summarizing your findings (what looks good, any suggestions or concerns). Use the tools available to you in order. First get the PR files, go through them, then write the review comment. After posting the comment, reply with a short confirmation to the user."""
+SYSTEM_PROMPT = """You are a helpful AI agent with access to tools for interacting with GitHub repositories, Jira issues, and more.
+
+When the user asks you to accomplish a task, break it down into steps and use the available tools to complete each step. You may need to call multiple tools in sequence — do so until the task is fully complete. After finishing, reply with a concise summary of what you did."""
 
 
-def run_agent(owner: str, repo: str, pull_number: int) -> str:
-    """
-    Run the code review agent: fetch PR files via MCP, let the model produce a review,
-    then post it as a PR comment via MCP. Returns the final assistant message to the user.
-    """
-    if not OPENAI_BASE:
-        raise ValueError("Set OPENAI_API_BASE to your OpenAI-compliant inference endpoint URL")
-
-    # If OPENAI_BASE is a full chat/completions URL, strip that path so the client can append it.
-    base_url = (
-        OPENAI_BASE.rsplit("/chat/completions", 1)[0]
-        if "/chat/completions" in OPENAI_BASE
-        else OPENAI_BASE.rstrip("/")
-    )
-    client = OpenAI(base_url=base_url, api_key=OPENAI_KEY)
-
-    mcp_initialize()
-    mcp_tool_list = mcp_list_tools()
-    
-    openai_tools = mcp_tools_to_openai(mcp_tool_list)
-    user_message = (
-        f"Please review the code for this pull request and add a comment with your review.\n"
-        f"Repository: {owner}/{repo}\n"
-        f"Pull request number: {pull_number}"
-    )
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
-    ]
-    max_turns = 10
+def _agent_loop(client, messages, openai_tools, max_turns=15):
+    """Inner loop: let the LLM call tools across multiple turns until done."""
     final_content = ""
-
-    for _ in range(max_turns):
+    for turn in range(max_turns):
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=messages,
@@ -205,34 +177,29 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
         )
         choice = response.choices[0]
         msg = choice.message
-        finish = choice.finish_reason
 
+        print(f"\n--- Turn {turn + 1} (finish_reason={choice.finish_reason}) ---")
         if msg.content:
-            final_content = (msg.content or "").strip()
-
-        if finish == "stop" and not getattr(msg, "tool_calls", None):
-            return final_content or "Review flow finished."
+            print(f"Assistant: {msg.content}")
+            final_content = msg.content.strip()
 
         tool_calls = getattr(msg, "tool_calls", None) or []
         if not tool_calls:
-            return final_content or "Review flow finished."
+            return final_content or "Done."
 
-        # Append assistant message with tool calls
+        for tc in tool_calls:
+            print(f"  Tool call: {tc.function.name}({tc.function.arguments[:200]})")
+
         assistant_msg = {
             "role": "assistant",
             "content": msg.content or None,
             "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
+                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
                 for tc in tool_calls
             ],
         }
         messages.append(assistant_msg)
 
-        # Execute each tool and append tool results
         for tc in tool_calls:
             name = tc.function.name
             try:
@@ -243,13 +210,54 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
                 result = mcp_call_tool(name, args)
             except Exception as e:
                 result = json.dumps({"error": str(e)})
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
-            })
+            print(f"  Result ({name}): {result[:300]}...")
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     return final_content or "Max turns reached."
+
+
+def interactive_chat(max_turns_per_query: int = 15):
+    """
+    Interactive chat loop: continuously prompts for user input,
+    runs the agent loop for each query, and keeps conversation history.
+    Type 'exit' or 'quit' to stop.
+    """
+    if not OPENAI_BASE:
+        raise ValueError("Set OPENAI_BASE_URL in your .env file")
+
+    base_url = (
+        OPENAI_BASE.rsplit("/chat/completions", 1)[0]
+        if "/chat/completions" in OPENAI_BASE
+        else OPENAI_BASE.rstrip("/")
+    )
+    client = OpenAI(base_url=base_url, api_key=OPENAI_KEY)
+
+    mcp_initialize()
+    mcp_tool_list = mcp_list_tools()
+    openai_tools = mcp_tools_to_openai(mcp_tool_list)
+    print(f"Loaded {len(mcp_tool_list)} MCP tools.")
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    print("\nInteractive Agent Chat (type 'exit' to quit)")
+    print("=" * 50)
+
+    while True:
+        try:
+            user_input = input("\nYou: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in ("exit", "quit"):
+            print("Goodbye!")
+            break
+
+        messages.append({"role": "user", "content": user_input})
+        result = _agent_loop(client, messages, openai_tools, max_turns=max_turns_per_query)
+        messages.append({"role": "assistant", "content": result})
 
 
 # ---------------------------------------------------------------------------
@@ -257,17 +265,26 @@ def run_agent(owner: str, repo: str, pull_number: int) -> str:
 # ---------------------------------------------------------------------------
 
 def main():
-    if len(sys.argv) != 4:
-        print("Usage: python agent.py <owner> <repo> <pull_number>", file=sys.stderr)
-        print("Example: python agent.py octocat hello-world 123", file=sys.stderr)
-        sys.exit(1)
-    owner, repo, pull_number = sys.argv[1], sys.argv[2], int(sys.argv[3])
-    try:
-        out = run_agent(owner, repo, pull_number)
-        print(out)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    if len(sys.argv) > 1:
+        query = " ".join(sys.argv[1:])
+        if not OPENAI_BASE:
+            raise ValueError("Set OPENAI_BASE_URL in your .env file")
+        base_url = (
+            OPENAI_BASE.rsplit("/chat/completions", 1)[0]
+            if "/chat/completions" in OPENAI_BASE
+            else OPENAI_BASE.rstrip("/")
+        )
+        client = OpenAI(base_url=base_url, api_key=OPENAI_KEY)
+        mcp_initialize()
+        openai_tools = mcp_tools_to_openai(mcp_list_tools())
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": query},
+        ]
+        result = _agent_loop(client, messages, openai_tools)
+        print(f"\n{result}")
+    else:
+        interactive_chat()
 
 
 if __name__ == "__main__":
