@@ -17,7 +17,7 @@ flowchart LR
         M1[Module 1<br/>Talk to the Machine]
         M2[Module 2<br/>Extending the Brain]
         M3[Module 3<br/>The Full Stack Agent]
-        M4[Module 4<br/>Code Whisperer]
+        M4[Module 4<br/>NuAgent]
         
         M1 --> M2 --> M3 --> M4
     end
@@ -33,10 +33,9 @@ flowchart LR
 ```bash
 # Clone this repo
 git clone <repo-url>
-cd fifth_elephant_workshop
 
-# Start with Module 1
-git checkout module-1
+# Start with workshop-2
+git checkout workshop-2
 ```
 
 ---
@@ -64,10 +63,10 @@ git checkout module-1
 ## Navigating Between Modules
 
 ```bash
-git checkout module-1   # Talk to the Machine
-git checkout module-2   # Extending the Brain
-git checkout module-3   # The Full Stack Agent
-git checkout module-4   # Code Whisperer
+cd module-1   # Talk to the Machine
+cd module-2   # Extending the Brain
+cd module-3   # The Full Stack Agent
+cd module-4   # Code Whisperer
 ```
 
 Each module branch contains:
