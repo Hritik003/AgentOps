@@ -9,6 +9,7 @@ Runs an agentic loop with an OpenAI-compliant inference endpoint.
 
 import json
 import os
+import re
 import sys
 
 import requests
@@ -201,7 +202,8 @@ def _agent_loop(client, messages, openai_tools, max_turns=15):
         messages.append(assistant_msg)
 
         for tc in tool_calls:
-            name = tc.function.name
+            name = re.sub(r"<\|[^|]*\|>[^\s]*", "", tc.function.name).strip()
+            tc.function.name = name
             try:
                 args = json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments
             except json.JSONDecodeError:
