@@ -27,7 +27,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+# load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 GITHUB_API_BASE = "https://api.github.com"
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
@@ -138,6 +138,15 @@ async def create_or_update_file(
     """
     if not GITHUB_TOKEN:
         return str({"error": "GITHUB_TOKEN is required to create/update files."})
+
+    if not sha:
+        existing = await _github(
+            "GET",
+            f"/repos/{owner}/{repo}/contents/{path}",
+            params={"ref": branch},
+        )
+        if isinstance(existing, dict) and existing.get("sha"):
+            sha = existing["sha"]
 
     encoded_content = base64.b64encode(content.encode()).decode()
     payload: dict = {
